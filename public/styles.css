@@ -1,0 +1,141 @@
+body {
+    font-family: monospace;
+    background-color: #ffffff;
+    color: #000000;
+    margin: 0;
+    padding: 20px;
+}
+
+h1, h2 {
+    border-bottom: 2px solid #000;
+    padding-bottom: 5px;
+    margin-top: 20px;
+    margin-bottom: 15px;
+}
+
+.controls {
+    margin-bottom: 20px;
+}
+
+input[type="text"], input[type="number"], select {
+    font-family: monospace;
+    padding: 8px;
+    border: 1px solid #000;
+    outline: none;
+    background: #fff;
+}
+
+button {
+    font-family: monospace;
+    background-color: #000;
+    color: #fff;
+    border: 1px solid #000;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover {
+    background-color: #fff;
+    color: #000;
+}
+
+#tab-bar {
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    background-color: #fff;
+    color: #000;
+    border: 1px solid #000;
+}
+
+.tab-btn.active, .tab-btn:hover {
+    background-color: #000;
+    color: #fff;
+}
+
+.action-btn {
+    margin-left: 15px;
+    padding: 4px 10px;
+    font-size: 0.9em;
+}
+
+.section {
+    display: none; 
+}
+
+/* NEW: Filter Panel & SQL Display Styling */
+.filter-panel {
+    border: 1px dashed #000;
+    background-color: #f9f9f9;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.sql-query-display {
+    background-color: #000;
+    color: #00ff00;
+    padding: 10px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    border-left: 4px solid #8b0000;
+}
+
+.filter-inputs {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.table-wrapper {
+    max-height: 600px;
+    overflow-y: auto;
+    border: 1px solid #000;
+    margin-bottom: 10px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    border: 1px solid #000;
+    padding: 8px;
+    text-align: left;
+}
+
+th {
+    background-color: #000;
+    color: #fff;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.leak-table th { background-color: #8b0000; }
+.leak-table td { color: #8b0000; font-weight: bold; }
+
+#error-msg {
+    color: #000;
+    font-weight: bold;
+    background: #eee;
+    padding: 10px;
+    display: none;
+    border: 1px dashed #000;
+    margin-bottom: 20px;
+}
+
+#process-tree-content {
+    width: 100%;
+    height: 600px;
+    border: 1px solid #000;
+    background-color: #fafafa;
+}

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbox Telemetry Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+    <h1>=== SANDBOX DATABASE VIEWER ===</h1>
+
+    <div class="controls">
+        <input type="text" id="sandboxInput" placeholder="Enter Sandbox Name...">
+        <button onclick="connectAndFetch()">Connect / Refresh</button>
+    </div>
+
+    <div id="error-msg"></div>
+
+    <div id="tab-bar" style="display: none;">
+        <button class="tab-btn" onclick="switchTab('sec-tree', this)">Process Tree</button>
+        <button class="tab-btn" onclick="switchTab('sec-leaks', this)">Memory Leaks</button>
+        <button class="tab-btn" onclick="switchTab('sec-process', this)">Lifecycle</button>
+        <button class="tab-btn" onclick="switchTab('sec-syscalls', this)">Syscalls</button>
+        <button class="tab-btn" onclick="switchTab('sec-memory', this)">Memory Events</button>
+        <button class="tab-btn" onclick="switchTab('sec-resources', this)">Snapshots</button>
+    </div>
+
+    <div id="dashboard">
+        <!-- Process Hierarchy Tree -->
+        <div class="section" id="sec-tree">
+            <h2>Process Hierarchy Diagram <button onclick="recenterTree()" class="action-btn">[Center View]</button></h2>
+            <div id="process-tree-content">
+                <p style="padding: 20px;">Awaiting data...</p>
+            </div>
+        </div>
+
+        <!-- Memory Leaks -->
+        <div class="section" id="sec-leaks">
+            <h2>Automated Memory Leak Detection</h2>
+            <div class="filter-panel" id="filter-leaks">
+                <div class="sql-query-display">SELECT * FROM memory_events WHERE action = 'ALLOC' AND ...;</div>
+                <div class="filter-inputs">
+                    <input type="number" data-col="0" data-colname="pid" data-type="exact" placeholder="PID (Exact)">
+                    <input type="text" data-col="1" data-colname="process_name" data-type="includes" placeholder="Process Name">
+                    <input type="number" data-col="3" data-colname="requested_bytes" data-type="min" placeholder="Min Bytes Lost">
+                    <button onclick="applyFilters('tbl-leaks', 'filter-leaks', 'memory_leaks_view')">Apply</button>
+                    <button onclick="clearFilters('tbl-leaks', 'filter-leaks', 'memory_leaks_view')">Clear</button>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="tbl-leaks" class="leak-table">
+                    <thead><tr><th>PID</th><th>Process Name</th><th>Leaked Address</th><th>Bytes Lost</th><th>Allocated At</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Process Lifecycle -->
+        <div class="section" id="sec-process">
+            <h2>Process Lifecycle</h2>
+            <div class="filter-panel" id="filter-process">
+                <div class="sql-query-display">SELECT * FROM process_lifecycle;</div>
+                <div class="filter-inputs">
+                    <input type="number" data-col="0" data-colname="pid" data-type="exact" placeholder="PID (Exact)">
+                    <input type="number" data-col="1" data-colname="parent_pid" data-type="exact" placeholder="Parent PID">
+                    <input type="text" data-col="2" data-colname="process_name" data-type="includes" placeholder="Process Name">
+                    <button onclick="applyFilters('tbl-process', 'filter-process', 'process_lifecycle')">Apply</button>
+                    <button onclick="clearFilters('tbl-process', 'filter-process', 'process_lifecycle')">Clear</button>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="tbl-process">
+                    <thead><tr><th>PID</th><th>Parent PID</th><th>Name</th><th>Start Time</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Syscalls -->
+        <div class="section" id="sec-syscalls">
+            <h2>Syscall Telemetry</h2>
+            <div class="filter-panel" id="filter-syscalls">
+                <div class="sql-query-display">SELECT * FROM syscall_telemetry;</div>
+                <div class="filter-inputs">
+                    <input type="number" data-col="0" data-colname="pid" data-type="exact" placeholder="PID (Exact)">
+                    <input type="text" data-col="2" data-colname="syscall_name" data-type="exact" placeholder="Syscall Name">
+                    <input type="number" data-col="3" data-colname="execution_count" data-type="min" placeholder="Min Executions">
+                    <button onclick="applyFilters('tbl-syscalls', 'filter-syscalls', 'syscall_telemetry')">Apply</button>
+                    <button onclick="clearFilters('tbl-syscalls', 'filter-syscalls', 'syscall_telemetry')">Clear</button>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="tbl-syscalls">
+                    <thead><tr><th>PID</th><th>Syscall Number</th><th>Syscall Name</th><th>Execution Count</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Memory Events -->
+        <div class="section" id="sec-memory">
+            <h2>Memory Events</h2>
+            <div class="filter-panel" id="filter-memory">
+                <div class="sql-query-display">SELECT * FROM memory_events;</div>
+                <div class="filter-inputs">
+                    <input type="number" data-col="1" data-colname="pid" data-type="exact" placeholder="PID">
+                    <select data-col="3" data-colname="action" data-type="exact">
+                        <option value="">Any Action</option>
+                        <option value="ALLOC">ALLOC</option>
+                        <option value="FREE">FREE</option>
+                    </select>
+                    <select data-col="5" data-colname="status" data-type="exact">
+                        <option value="">Any Status</option>
+                        <option value="GRANTED">GRANTED</option>
+                        <option value="DENIED">DENIED</option>
+                    </select>
+                    <input type="number" data-col="4" data-colname="requested_bytes" data-type="min" placeholder="Min Bytes">
+                    <input type="number" data-col="4" data-colname="requested_bytes" data-type="max" placeholder="Max Bytes">
+                    <button onclick="applyFilters('tbl-memory', 'filter-memory', 'memory_events')">Apply</button>
+                    <button onclick="clearFilters('tbl-memory', 'filter-memory', 'memory_events')">Clear</button>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="tbl-memory">
+                    <thead><tr><th>Event ID</th><th>PID</th><th>Time</th><th>Action</th><th>Requested Bytes</th><th>Status</th><th>Address</th><th>Total Usage</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Resource Snapshots -->
+        <div class="section" id="sec-resources">
+            <h2>Resource Snapshots</h2>
+            <div class="filter-panel" id="filter-resources">
+                <div class="sql-query-display">SELECT * FROM resource_snapshots;</div>
+                <div class="filter-inputs">
+                    <input type="number" data-col="1" data-colname="pid" data-type="exact" placeholder="PID">
+                    <input type="number" data-col="4" data-colname="rss_memory_bytes" data-type="min" placeholder="Min RAM (Bytes)">
+                    <button onclick="applyFilters('tbl-resources', 'filter-resources', 'resource_snapshots')">Apply</button>
+                    <button onclick="clearFilters('tbl-resources', 'filter-resources', 'resource_snapshots')">Clear</button>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="tbl-resources">
+                    <thead><tr><th>Snapshot ID</th><th>PID</th><th>Time</th><th>CPU %</th><th>RSS Memory (Bytes)</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
