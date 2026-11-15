@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sandbox DBMS Lab</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div>
+            <p class="eyebrow">DATABASE MANAGEMENT SYSTEM DEMO</p>
+            <h1>Sandbox DBMS Lab</h1>
+        </div>
+        <form id="database-form" class="database-form">
+            <label for="database-name">PostgreSQL database</label>
+            <input id="database-name" name="db" value="dummy" pattern="[A-Za-z0-9_]+" required>
+            <button type="submit">Connect</button>
+        </form>
+    </header>
+
+    <div id="connection-status" class="status" role="status">Connecting…</div>
+
+    <div class="layout">
+        <nav class="sidebar" aria-label="Database pages">
+            <a href="#overview" data-page="overview">Overview</a>
+            <a href="#process-tree" data-page="process-tree">Process tree</a>
+            <a href="#processes" data-page="processes">Process lifecycle</a>
+            <a href="#memory" data-page="memory">Memory events</a>
+            <a href="#leaks" data-page="leaks">Leak analysis</a>
+            <a href="#syscalls" data-page="syscalls">Syscall analytics</a>
+            <a href="#resources" data-page="resources">Resource snapshots</a>
+            <a href="#schema" data-page="schema">Schema & indexes</a>
+        </nav>
+
+        <main id="pages">
+            <section class="page" id="page-overview">
+                <h2>Live database overview</h2>
+                <p class="intro">Counts and latest timestamps are calculated by PostgreSQL when this page loads.</p>
+                <div id="overview-cards" class="cards"></div>
+                <div id="overview-query" class="query-box"></div>
+            </section>
+
+            <section class="page" id="page-process-tree">
+                <h2>Process hierarchy tree</h2>
+                <p class="intro">Built from process lifecycle records in PostgreSQL. Drag to pan, scroll to zoom, and use Fit to center the graph.</p>
+                <div class="tree-toolbar">
+                    <button id="refresh-process-tree" type="button">Refresh tree</button>
+                    <button id="fit-process-tree" type="button" class="secondary">Fit view</button>
+                    <span id="process-tree-count" class="tree-count"></span>
+                </div>
+                <div id="process-tree-content" class="process-tree-content" role="img" aria-label="Process parent-child hierarchy"></div>
+                <div id="process-tree-query"></div>
+            </section>
+
+            <section class="page" id="page-processes">
+                <h2>Process lifecycle</h2>
+                <p class="intro">Parameterized filters, sorting, and pagination run in the API against PostgreSQL.</p>
+                <form id="process-filters" class="filters">
+                    <label>PID <input name="pid" type="number" min="0"></label>
+                    <label>Parent PID <input name="parentPid" type="number" min="0"></label>
+                    <label>Name contains <input name="name"></label>
+                    <label>Started after <input name="from" type="datetime-local"></label>
+                    <label>Started before <input name="to" type="datetime-local"></label>
+                    <label>Sort by <select name="sort"><option value="started">Start time</option><option value="pid">PID</option><option value="name">Name</option></select></label>
+                    <label>Direction <select name="direction"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+                    <button>Run SQL query</button><button type="reset" class="secondary">Clear</button>
+                </form>
+                <div id="processes-results" class="results"></div>
+            </section>
+
+            <section class="page" id="page-memory">
+                <h2>Memory events</h2>
+                <form id="memory-filters" class="filters">
+                    <label>PID <input name="pid" type="number" min="0"></label>
+                    <label>Action <select name="action"><option value="">Any</option><option>ALLOC</option><option>FREE</option></select></label>
+                    <label>Status <select name="status"><option value="">Any</option><option>GRANTED</option><option>DENIED</option></select></label>
+                    <label>Minimum bytes <input name="minBytes" type="number" min="0"></label>
+                    <label>Maximum bytes <input name="maxBytes" type="number" min="0"></label>
+                    <label>From <input name="from" type="datetime-local"></label>
+                    <label>To <input name="to" type="datetime-local"></label>
+                    <label>Sort by <select name="sort"><option value="time">Time</option><option value="pid">PID</option><option value="bytes">Bytes</option></select></label>
+                    <label>Direction <select name="direction"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+                    <button>Run SQL query</button><button type="reset" class="secondary">Clear</button>
+                </form>
+                <div id="memory-results" class="results"></div>
+            </section>
+
+            <section class="page" id="page-leaks">
+                <h2>Memory leak analysis</h2>
+                <p class="intro">Uses a correlated NOT EXISTS query to find granted allocations without a later matching FREE event.</p>
+                <form id="leak-filters" class="filters">
+                    <label>PID <input name="pid" type="number" min="0"></label>
+                    <label>Process contains <input name="name"></label>
+                    <label>Minimum bytes <input name="minBytes" type="number" min="0"></label>
+                    <label>From <input name="from" type="datetime-local"></label>
+                    <label>To <input name="to" type="datetime-local"></label>
+                    <label>Sort by <select name="sort"><option value="time">Allocation time</option><option value="pid">PID</option><option value="bytes">Bytes</option></select></label>
+                    <label>Direction <select name="direction"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+                    <button>Run SQL query</button><button type="reset" class="secondary">Clear</button>
+                </form>
+                <div id="leaks-results" class="results"></div>
+            </section>
+
+            <section class="page" id="page-syscalls">
+                <h2>Syscall analytics</h2>
+                <p class="intro">Aggregates executions by syscall and process using GROUP BY, SUM, HAVING, and a process join.</p>
+                <form id="syscall-filters" class="filters">
+                    <label>PID <input name="pid" type="number" min="0"></label>
+                    <label>Syscall name contains <input name="name"></label>
+                    <label>Minimum total executions <input name="minCount" type="number" min="0"></label>
+                    <label>Sort by <select name="sort"><option value="count">Execution count</option><option value="name">Syscall name</option><option value="number">Syscall number</option></select></label>
+                    <label>Direction <select name="direction"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+                    <button>Run aggregate query</button><button type="reset" class="secondary">Clear</button>
+                </form>
+                <div id="syscalls-results" class="results"></div>
+            </section>
+
+            <section class="page" id="page-resources">
+                <h2>Resource snapshots</h2>
+                <form id="resource-filters" class="filters">
+                    <label>PID <input name="pid" type="number" min="0"></label>
+                    <label>Minimum CPU % <input name="minCpu" type="number" min="0" step="any"></label>
+                    <label>Maximum CPU % <input name="maxCpu" type="number" min="0" step="any"></label>
+                    <label>Minimum RSS bytes <input name="minRss" type="number" min="0"></label>
+                    <label>Maximum RSS bytes <input name="maxRss" type="number" min="0"></label>
+                    <label>From <input name="from" type="datetime-local"></label>
+                    <label>To <input name="to" type="datetime-local"></label>
+                    <label>Sort by <select name="sort"><option value="time">Time</option><option value="pid">PID</option><option value="cpu">CPU</option><option value="rss">RSS memory</option></select></label>
+                    <label>Direction <select name="direction"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+                    <button>Run SQL query</button><button type="reset" class="secondary">Clear</button>
+                </form>
+                <div id="resources-results" class="results"></div>
+            </section>
+
+            <section class="page" id="page-schema">
+                <h2>Schema, relationships & indexes</h2>
+                <p class="intro">Reads PostgreSQL catalog metadata. Declared foreign keys are listed separately from joins based on shared fields such as PID.</p>
+                <button id="refresh-schema">Inspect database schema</button>
+                <div id="schema-results" class="schema-results"></div>
+                <div id="schema-query" class="query-box"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
