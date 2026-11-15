@@ -27,65 +27,95 @@ function recenterTree() {
     }
 }
 
-// NEW: Core Filtering Engine
-function applyFilters(tableId, panelId, tableName) {
-    const table = document.getElementById(tableId);
+async function applyFilters(tableId, panelId, tableName) {
     const panel = document.getElementById(panelId);
-    const rows = table.querySelectorAll('tbody tr');
     const inputs = panel.querySelectorAll('input, select');
     const sqlDisplay = panel.querySelector('.sql-query-display');
+    const sandboxName = localStorage.getItem('activeSandbox');
 
     let conditions = [];
 
-    // Filter Logic
-    rows.forEach(row => {
-        let match = true;
-        inputs.forEach(input => {
-            if (!input.value) return; 
-            
-            const colIdx = parseInt(input.getAttribute('data-col'));
-            const filterType = input.getAttribute('data-type');
-            const cellText = row.cells[colIdx].innerText.trim();
-            const filterValue = input.value.trim().toLowerCase();
-
-            if (filterType === 'exact') {
-                if (cellText.toLowerCase() !== filterValue) match = false;
-            } else if (filterType === 'includes') {
-                if (!cellText.toLowerCase().includes(filterValue)) match = false;
-            } else if (filterType === 'min') {
-                if (parseFloat(cellText) < parseFloat(filterValue)) match = false;
-            } else if (filterType === 'max') {
-                if (parseFloat(cellText) > parseFloat(filterValue)) match = false;
-            }
-        });
-        row.style.display = match ? '' : 'none';
-    });
-
-    // SQL Query String Generation
     inputs.forEach(input => {
         if (!input.value) return;
+        
         const colName = input.getAttribute('data-colname');
         const filterType = input.getAttribute('data-type');
         let val = input.value.trim();
         
-        // Wrap strings in quotes for SQL syntax accuracy
-        if (filterType === 'exact' && isNaN(val)) val = `'${val}'`;
+        if (isNaN(val)) val = `'${val}'`;
         
         if (filterType === 'exact') conditions.push(`${colName} = ${val}`);
-        else if (filterType === 'includes') conditions.push(`${colName} LIKE '%${val}%'`);
+        else if (filterType === 'includes') conditions.push(`${colName} ILIKE '%${val.replace(/'/g, '')}%'`);
         else if (filterType === 'min') conditions.push(`${colName} >= ${val}`);
         else if (filterType === 'max') conditions.push(`${colName} <= ${val}`);
     });
 
-    if (conditions.length === 0) {
-        sqlDisplay.innerText = `SELECT * FROM ${tableName};`;
-    } else {
-        // Special case to append to the complex Leak query, otherwise standard WHERE
-        if (tableName === 'memory_leaks_view') {
-            sqlDisplay.innerText = `SELECT * FROM memory_events WHERE action = 'ALLOC' AND ... AND ` + conditions.join(' AND ') + `;`;
-        } else {
-            sqlDisplay.innerText = `SELECT * FROM ${tableName} WHERE ` + conditions.join(' AND ') + `;`;
+    let finalSQL = "";
+
+    // NEW: Dynamic Recursive CTE Generation
+    if (tableName === 'process_tree_cte') {
+        const rootPidFilter = conditions.find(c => c.startsWith('pid ='));
+        let baseCondition = "WHERE parent_pid NOT IN (SELECT pid FROM process_lifecycle)";
+        
+        // If user filters for a specific PID, dynamically shift the CTE base case to start the tree there!
+        if (rootPidFilter) {
+            baseCondition = `WHERE ${rootPidFilter}`;
         }
+
+        finalSQL = `WITH RECURSIVE process_tree AS (
+            SELECT pid, parent_pid, process_name, start_time, 1 as depth
+            FROM process_lifecycle
+            ${baseCondition}
+            UNION ALL
+            SELECT p.pid, p.parent_pid, p.process_name, p.start_time, pt.depth + 1
+            FROM process_lifecycle p
+            INNER JOIN process_tree pt ON pt.pid = p.parent_pid
+        )
+        SELECT * FROM process_tree;`;
+        
+    } else if (tableName === 'memory_leaks_view') {
+        const baseLeakQuery = `SELECT a.pid, COALESCE(p.process_name, 'Unknown') as process_name, a.memory_address, a.requested_bytes, a.timestamp as alloc_time FROM memory_events a LEFT JOIN memory_events f ON a.pid = f.pid AND a.memory_address = f.memory_address AND f.action = 'FREE' AND f.event_id > a.event_id LEFT JOIN process_lifecycle p ON a.pid = p.pid WHERE a.action = 'ALLOC' AND a.status = 'GRANTED' AND a.memory_address IS NOT NULL AND a.memory_address != '' AND f.event_id IS NULL`;
+        
+        if (conditions.length === 0) {
+            finalSQL = baseLeakQuery + ` ORDER BY a.timestamp DESC;`;
+        } else {
+            finalSQL = `SELECT * FROM (${baseLeakQuery}) as base_leaks WHERE ` + conditions.join(' AND ') + ` ORDER BY alloc_time DESC;`;
+        }
+    } else {
+        if (conditions.length === 0) {
+            finalSQL = `SELECT * FROM ${tableName};`;
+        } else {
+            finalSQL = `SELECT * FROM ${tableName} WHERE ` + conditions.join(' AND ') + `;`;
+        }
+    }
+
+    sqlDisplay.innerText = finalSQL;
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/query/${sandboxName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sqlQuery: finalSQL })
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+
+        if (tableName === 'process_tree_cte') {
+            renderTree(result.data);
+        } else {
+            const columnMaps = {
+                'tbl-leaks': ['pid', 'process_name', 'memory_address', 'requested_bytes', 'alloc_time'],
+                'tbl-process': ['pid', 'parent_pid', 'process_name', 'start_time'],
+                'tbl-syscalls': ['pid', 'syscall_number', 'syscall_name', 'execution_count'],
+                'tbl-memory': ['event_id', 'pid', 'timestamp', 'action', 'requested_bytes', 'status', 'memory_address', 'current_total_usage'],
+                'tbl-resources': ['snapshot_id', 'pid', 'timestamp', 'cpu_usage_percent', 'rss_memory_bytes']
+            };
+            renderTable(tableId, result.data, columnMaps[tableId]);
+        }
+    } catch (err) {
+        console.error("Query Execution Error:", err);
+        alert("SQL Execution Error. Check backend console.");
     }
 }
 
@@ -93,7 +123,7 @@ function clearFilters(tableId, panelId, tableName) {
     const panel = document.getElementById(panelId);
     const inputs = panel.querySelectorAll('input, select');
     inputs.forEach(input => input.value = '');
-    applyFilters(tableId, panelId, tableName);
+    applyFilters(tableId, panelId, tableName); 
 }
 
 async function connectAndFetch() {
@@ -160,9 +190,11 @@ function renderTree(procs) {
     const edges = new vis.DataSet();
 
     procs.forEach(p => {
+        // NEW: Display the PostgreSQL-calculated 'depth' dynamically on the node!
+        const depthLabel = p.depth ? `\nDepth: ${p.depth}` : "";
         nodes.add({
             id: p.pid,
-            label: `PID: ${p.pid}\n${p.process_name}`,
+            label: `PID: ${p.pid}\n${p.process_name}${depthLabel}`,
             shape: 'box',
             color: { background: '#000', border: '#000', highlight: { background: '#444', border: '#444' } },
             font: { color: '#fff', face: 'monospace', align: 'center' }
